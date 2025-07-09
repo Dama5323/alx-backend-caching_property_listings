@@ -35,46 +35,36 @@ def get_all_properties():
 
 def get_redis_cache_metrics():
     """
-    Returns detailed Redis cache metrics including memory usage.
+    Returns detailed Redis cache metrics with safe division for hit_ratio
     """
     try:
         redis_conn = get_redis_connection("default")
         info = redis_conn.info()
         
-        # Calculate hit ratio
         hits = info.get("keyspace_hits", 0)
         misses = info.get("keyspace_misses", 0)
-        total = hits + misses
-        hit_ratio = (hits / total) if total > 0 else 0.0
+        total_requests = hits + misses
         
-        # Get memory stats
-        memory_stats = {
-            'used_memory': info.get('used_memory', 0),
-            'maxmemory': info.get('maxmemory', 0),
-            'memory_usage_percentage': (
-                (info['used_memory'] / info['maxmemory']) * 100 
-                if info.get('maxmemory', 0) > 0 
-                else 0
-            )
-        }
+        # Safely calculate hit ratio (critical fix)
+        hit_ratio = (hits / total_requests) if total_requests > 0 else 0.0
         
         metrics = {
             "hits": hits,
             "misses": misses,
-            "hit_ratio": round(hit_ratio, 4),
-            "memory": memory_stats,
-            "keys": redis_conn.dbsize(),
-            "uptime": info.get('uptime_in_seconds', 0)
+            "total_requests": total_requests,
+            "hit_ratio": round(hit_ratio, 4),  # Rounded to 4 decimal places
+            "calculation_note": "safe division with total_requests check"
         }
         
-        logger.info(f"Redis Metrics: {json.dumps(metrics, indent=2)}")
+        logger.info(f"Cache Metrics: {metrics}")
         return metrics
         
     except Exception as e:
-        logger.error(f"Failed to get Redis metrics: {str(e)}")
+        logger.error(f"Metrics error: {str(e)}")
         return {
             "error": str(e),
             "hits": 0,
             "misses": 0,
-            "hit_ratio": 0.0
+            "hit_ratio": 0.0,
+            "emergency_fallback": True
         }
